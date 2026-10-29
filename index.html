@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>買い物リスト</title>
+<meta name="description" content="売り場ごとに並ぶ、毎日の買い物リスト">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="買い物">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f3f6f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121814" media="(prefers-color-scheme: dark)">
+<style>
+*{box-sizing:border-box}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+
+/* Layout: one narrow column like a paper memo — sticky add bar on top, quick-add chips, then aisles in store-walking order, done items folded at the bottom */
+:root {
+  --bg: #f3f6f2;
+  --surface: #ffffff;
+  --ink: #1d2a22;
+  --muted: #5d6b62;
+  --line: #d9e1da;
+  --accent: #2f7a4b;
+  --accent-soft: #e2efe6;
+  --danger: #b23b2e;
+  --font-display: "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+  --font-body: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+  --radius: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121814; --surface: #1b231e; --ink: #e6ede8; --muted: #9aa8a0; --line: #2c3830;
+    --accent: #6cc28c; --accent-soft: #1f3528; --danger: #f08a7c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121814; --surface: #1b231e; --ink: #e6ede8; --muted: #9aa8a0; --line: #2c3830;
+  --accent: #6cc28c; --accent-soft: #1f3528; --danger: #f08a7c;
+  color-scheme: dark;
+}
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap {
+  max-width: 560px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+header.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--bg); padding-block: 14px 10px;
+  display: flex; flex-direction: column; gap: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.titlerow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; margin: 0; text-wrap: balance; }
+.count { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+form.add { display: flex; gap: 8px; }
+form.add input {
+  flex: 1; min-width: 0; font: inherit; font-size: 1rem;
+  padding: 10px 12px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+form.add select {
+  font: inherit; font-size: .85rem; padding: 0 6px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); max-width: 7.5em;
+}
+button { font: inherit; cursor: pointer; }
+.btn-primary {
+  background: var(--accent); color: var(--bg); border: 0; border-radius: var(--radius);
+  padding: 0 16px; font-weight: 700;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.label {
+  font-size: .75rem; letter-spacing: .08em; color: var(--muted); font-weight: 700; margin: 0 0 8px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 999px; padding: 6px 12px; font-size: .9rem;
+}
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.chip .x { margin-left: 6px; color: var(--danger); }
+.chips-tools { display: flex; justify-content: flex-end; margin-top: 8px; }
+.linkbtn { background: none; border: 0; color: var(--muted); font-size: .8rem; text-decoration: underline; padding: 4px; }
+section.aisle h2 {
+  font-family: var(--font-display); font-weight: 700; font-size: .95rem; margin: 0 0 6px;
+  display: flex; gap: 8px; align-items: baseline;
+}
+section.aisle h2 .n { color: var(--muted); font-weight: 500; font-size: .8rem; font-variant-numeric: tabular-nums; }
+ul.items { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+ul.items li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--line); }
+ul.items li:first-child { border-top: 0; }
+.check {
+  width: 26px; height: 26px; flex: none; border-radius: 50%;
+  border: 2px solid var(--accent); background: transparent; padding: 0;
+  display: grid; place-items: center; color: var(--bg);
+}
+li.done .check { background: var(--accent); }
+.name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+li.done .name { color: var(--muted); text-decoration: line-through; }
+.note { display: block; font-size: .75rem; color: var(--muted); }
+.del { background: none; border: 0; color: var(--muted); font-size: 1.1rem; padding: 4px 6px; line-height: 1; }
+.del:hover { color: var(--danger); }
+.empty {
+  background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
+  padding: 20px; color: var(--muted); text-align: center;
+}
+.donebar { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.btn-ghost {
+  background: none; border: 1px solid var(--line); color: var(--ink); border-radius: var(--radius); padding: 6px 12px; font-size: .85rem;
+}
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .85rem; }
+.btn-danger { background: var(--danger); color: var(--bg); border: 0; border-radius: var(--radius); padding: 6px 12px; font-size: .85rem; font-weight: 700; }
+.status { color: var(--danger); font-size: .85rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .check, .chip { transition: background-color .15s, border-color .15s; }
+}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="top">
+    <div class="titlerow">
+      <h1>買い物リスト</h1>
+      <span class="count" id="count"></span>
+    </div>
+    <form class="add" id="addForm" autocomplete="off">
+      <input id="newName" type="text" placeholder="買う物を入力" aria-label="買う物" enterkeyhint="done">
+      <select id="newCat" aria-label="売り場"></select>
+      <button class="btn-primary" type="submit">追加</button>
+    </form>
+  </header>
+
+  <p class="status" id="status" hidden></p>
+
+  <section aria-labelledby="staplesLabel">
+    <p class="label" id="staplesLabel">よく買う物（タップで追加）</p>
+    <div class="chips" id="staples"></div>
+    <div class="chips-tools">
+      <button class="linkbtn" id="editStaples" type="button">定番を編集</button>
+    </div>
+  </section>
+
+  <div id="aisles"></div>
+
+  <section id="doneSection" hidden>
+    <div class="donebar">
+      <p class="label" style="margin:0">カゴに入れた物 <span id="doneCount"></span></p>
+      <div id="clearArea">
+        <button class="btn-ghost" id="clearDone" type="button">まとめて消す</button>
+      </div>
+    </div>
+    <ul class="items" id="doneList" style="margin-top:8px"></ul>
+  </section>
+
+</div>
+
+<script>
+
+const CATS = ["野菜・果物", "肉・魚", "乳製品・卵", "パン・主食", "調味料・乾物", "飲み物・お菓子", "冷凍食品", "日用品", "その他"];
+const GUESS = [
+  ["野菜・果物", /にんじん|人参|玉ねぎ|たまねぎ|じゃがいも|キャベツ|レタス|トマト|きゅうり|ねぎ|もやし|ほうれん草|ブロッコリー|大根|白菜|なす|ピーマン|きのこ|しめじ|えのき|しいたけ|かぼちゃ|ごぼう|れんこん|生姜|しょうが|にんにく|バナナ|りんご|みかん|いちご|レモン|アボカド|野菜|果物|フルーツ|豆苗|小松菜|水菜|オクラ|さつまいも/],
+  ["肉・魚", /肉|豚|牛|鶏|ひき肉|ベーコン|ハム|ソーセージ|ウインナー|魚|鮭|さけ|サーモン|まぐろ|刺身|えび|いか|たこ|あさり|しらす|ちくわ|かまぼこ|ツナ/],
+  ["乳製品・卵", /牛乳|ミルク|卵|たまご|ヨーグルト|チーズ|バター|生クリーム|豆乳|納豆|豆腐|油揚げ|厚揚げ/],
+  ["パン・主食", /パン|食パン|米|ごはん|うどん|そば|パスタ|ラーメン|麺|シリアル|もち|餅/],
+  ["調味料・乾物", /醤油|しょうゆ|味噌|みそ|塩|砂糖|酢|みりん|酒|油|オリーブオイル|マヨネーズ|ケチャップ|ソース|だし|コンソメ|カレー|ルー|小麦粉|片栗粉|ごま|海苔|のり|わかめ|昆布|かつお節|ドレッシング|胡椒|こしょう/],
+  ["飲み物・お菓子", /水|お茶|ジュース|コーヒー|紅茶|ビール|炭酸|お菓子|チョコ|ポテチ|クッキー|アイス|せんべい|ガム/],
+  ["冷凍食品", /冷凍|餃子|ギョーザ/],
+  ["日用品", /ティッシュ|トイレットペーパー|洗剤|シャンプー|リンス|コンディショナー|石鹸|せっけん|ハンドソープ|歯ブラシ|歯磨き|ラップ|アルミホイル|ゴミ袋|スポンジ|電池|マスク|キッチンペーパー|柔軟剤|綿棒|保存袋/]
+];
+function guessCat(name) {
+  for (const [cat, re] of GUESS) if (re.test(name)) return cat;
+  return "その他";
+}
+
+const $ = (id) => document.getElementById(id);
+let ready = false;
+let items = [];      // [{id, ...data}]
+let staples = [];    // [{name, category}]
+let editingStaples = false;
+let readOnly = false;
+
+for (const c of ["自動", ...CATS]) {
+  const o = document.createElement("option");
+  o.value = c === "自動" ? "" : c; o.textContent = c === "自動" ? "自動" : c;
+  $("newCat").append(o);
+}
+
+function showStatus(msg) { const s = $("status"); s.textContent = msg; s.hidden = !msg; }
+
+function render() {
+  const open = items.filter(i => !i.done);
+  const done = items.filter(i => i.done);
+  $("count").textContent = `残り ${open.length} 品`;
+
+  // staples
+  const chips = $("staples"); chips.replaceChildren();
+  const openNames = new Set(open.map(i => i.name));
+  if (!staples.length) {
+    const p = document.createElement("span"); p.className = "count";
+    p.textContent = "リストの品物の ☆ を押すと、ここに定番として並びます。"; chips.append(p);
+  }
+  staples.forEach((s, idx) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip";
+    b.setAttribute("aria-pressed", openNames.has(s.name) ? "true" : "false");
+    b.textContent = s.name;
+    if (editingStaples) {
+      const x = document.createElement("span"); x.className = "x"; x.textContent = "×"; b.append(x);
+      b.setAttribute("aria-label", `${s.name} を定番から外す`);
+      b.onclick = () => removeStaple(idx);
+    } else {
+      b.onclick = () => { if (!openNames.has(s.name)) addItem(s.name, s.category); };
+    }
+    chips.append(b);
+  });
+  $("editStaples").textContent = editingStaples ? "編集を終える" : "定番を編集";
+  $("editStaples").hidden = !staples.length || readOnly;
+
+  // aisles
+  const aisles = $("aisles"); aisles.replaceChildren();
+  if (!open.length) {
+    const e = document.createElement("div"); e.className = "empty";
+    e.textContent = "買う物はまだありません。上の欄に入力するか、よく買う物をタップして追加してください。";
+    aisles.append(e);
+  }
+  aisles.style.display = "flex"; aisles.style.flexDirection = "column"; aisles.style.gap = "16px";
+  for (const cat of CATS) {
+    const list = open.filter(i => (i.category || "その他") === cat).sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+    if (!list.length) continue;
+    const sec = document.createElement("section"); sec.className = "aisle";
+    const h = document.createElement("h2"); h.textContent = cat;
+    const n = document.createElement("span"); n.className = "n"; n.textContent = `${list.length}`; h.append(n);
+    const ul = document.createElement("ul"); ul.className = "items";
+    list.forEach(i => ul.append(row(i)));
+    sec.append(h, ul); aisles.append(sec);
+  }
+
+  // done
+  $("doneSection").hidden = !done.length;
+  $("doneCount").textContent = `(${done.length})`;
+  const dl = $("doneList"); dl.replaceChildren();
+  done.sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0)).forEach(i => dl.append(row(i)));
+}
+
+function row(i) {
+  const li = document.createElement("li"); if (i.done) li.className = "done";
+  const c = document.createElement("button"); c.type = "button"; c.className = "check";
+  c.setAttribute("aria-label", i.done ? `${i.name} をリストに戻す` : `${i.name} をカゴに入れた`);
+  c.textContent = i.done ? "✓" : "";
+  c.onclick = () => toggle(i);
+  c.disabled = readOnly;
+  const name = document.createElement("span"); name.className = "name"; name.textContent = i.name;
+  if (i.note) { const n = document.createElement("span"); n.className = "note"; n.textContent = i.note; name.append(n); }
+  li.append(c, name);
+  if (!readOnly) {
+    const isStaple = staples.some(s => s.name === i.name);
+    const star = document.createElement("button"); star.type = "button"; star.className = "del";
+    star.textContent = isStaple ? "★" : "☆";
+    star.setAttribute("aria-label", isStaple ? `${i.name} は定番です` : `${i.name} を定番にする`);
+    star.onclick = () => { if (!isStaple) addStaple(i.name, i.category); };
+    const d = document.createElement("button"); d.type = "button"; d.className = "del";
+    d.textContent = "×"; d.setAttribute("aria-label", `${i.name} を削除`);
+    d.onclick = () => removeItem(i);
+    li.append(star, d);
+  }
+  return li;
+}
+
+
+// ---- 端末内に保存（localStorage） ----
+const KEY = "kaimono.v1";
+const DEFAULT_STAPLES = [
+  { name: "牛乳", category: "乳製品・卵" }, { name: "卵", category: "乳製品・卵" },
+  { name: "納豆", category: "乳製品・卵" }, { name: "豆腐", category: "乳製品・卵" },
+  { name: "食パン", category: "パン・主食" }, { name: "玉ねぎ", category: "野菜・果物" },
+  { name: "バナナ", category: "野菜・果物" }, { name: "トイレットペーパー", category: "日用品" }
+];
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) { const d = JSON.parse(raw); items = d.items || []; staples = d.staples || []; return; }
+  } catch (e) { showStatus("保存データを読み込めませんでした。"); }
+  items = []; staples = DEFAULT_STAPLES.slice();
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify({ items, staples })); showStatus(""); }
+  catch (e) { showStatus("保存できませんでした。ブラウザのプライベートモードでは保存されません。"); }
+  render();
+}
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+function addItem(name, category) {
+  name = name.trim(); if (!name) return;
+  items.push({ id: newId(), name, category: category || guessCat(name), done: false, addedAt: Date.now() });
+  save();
+}
+function toggle(i) {
+  const t = items.find(x => x.id === i.id); if (!t) return;
+  t.done = !t.done; t.doneAt = t.done ? Date.now() : null; save();
+}
+function removeItem(i) { items = items.filter(x => x.id !== i.id); save(); }
+function addStaple(name, category) { staples.push({ name, category: category || guessCat(name) }); save(); }
+function removeStaple(idx) { staples = staples.filter((_, k) => k !== idx); save(); }
+
+$("addForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("newName").value; const cat = $("newCat").value;
+  if (!v.trim()) return;
+  addItem(v, cat); $("newName").value = ""; $("newName").focus();
+});
+$("editStaples").onclick = () => { editingStaples = !editingStaples; render(); };
+
+const clearBtn = $("clearDone");
+let confirmTimer = null;
+clearBtn.onclick = () => {
+  const area = $("clearArea");
+  const n = items.filter(i => i.done).length;
+  const box = document.createElement("span"); box.className = "confirm";
+  const t = document.createElement("span"); t.textContent = `${n}品を消しますか？`;
+  const yes = document.createElement("button"); yes.className = "btn-danger"; yes.type = "button"; yes.textContent = "消す";
+  const no = document.createElement("button"); no.className = "btn-ghost"; no.type = "button"; no.textContent = "やめる";
+  const restore = () => { clearTimeout(confirmTimer); area.replaceChildren(clearBtn); };
+  yes.onclick = () => { items = items.filter(i => !i.done); restore(); save(); };
+  no.onclick = restore;
+  box.append(t, yes, no); area.replaceChildren(box);
+  confirmTimer = setTimeout(restore, 8000);
+};
+
+// 別のタブで変更されたら反映
+window.addEventListener("storage", (e) => { if (e.key === KEY) { load(); render(); } });
+
+load(); render();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
